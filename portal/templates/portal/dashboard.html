@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <header class="dashboard-header">
+        <div>
+            <p class="eyebrow">Subscriber directory</p>
+            <h1>Customers Across PlugHub Apps</h1>
+            <p class="subtext">Track who paid for Inventory, Queueing, Payment Checker, and future modules.</p>
+        </div>
+        <div class="header-actions">
+            <div class="user-chip">
+                {{ request.user.get_full_name|default:request.user.username|default:"Operator" }}
+            </div>
+            <a href="{% url 'logout' %}" class="ghost-link">Log out</a>
+        </div>
+    </header>
+
+    <section class="table-panel">
+        <header class="table-header">
+            <div>
+                <h2>Active Users</h2>
+                <p>Modern, operator-friendly pagination keeps large datasets manageable.</p>
+            </div>
+            <div class="pagination-info">
+                Page 1 <span>of 12</span>
+            </div>
+        </header>
+
+        <div class="table-wrapper">
+            <form class="filter-bar" method="get">
+                <label>
+                    <span class="sr-only">Search subscriptions</span>
+                    <input type="search"
+                           name="q"
+                           placeholder="Search ID, product, email, username, subscription..."
+                           value="{{ request.GET.q|default:'' }}">
+                </label>
+                <button type="submit" class="primary-btn compact">Search</button>
+            </form>
+
+            <table class="subscriptions-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Product</th>
+                        <th>Email</th>
+                        <th>Username</th>
+                        <th>Last Login (PH Time)</th>
+                        <th>Subscription Type</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in subscriptions %}
+                        <tr>
+                            <td>{{ record.id }}</td>
+                            <td>{{ record.product }}</td>
+                            <td>{{ record.email }}</td>
+                            <td>{{ record.username }}</td>
+                            <td>
+                                {% if record.last_login %}
+                                    {{ record.last_login|date:"M d, Y • h:i A" }}
+                                {% else %}
+                                    <span class="muted">No record</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ record.subscription_type }}</td>
+                            <td>
+                                <span class="status-pill {{ record.status|lower }}">
+                                    {{ record.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="empty-cell">No subscriptions yet. Connect your data source.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-bar">
+            <button class="page-btn" disabled>‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <span class="ellipsis">…</span>
+            <button class="page-btn">12</button>
+            <button class="page-btn">&rsaquo;</button>
+        </div>
+    </section>
+</div>
+{% endblock %}
