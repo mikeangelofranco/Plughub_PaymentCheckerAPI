@@ -9,6 +9,7 @@ staticfiles/
 __pycache__/
 *.py[cod]
 *$py.class
+.env
 
 # IDE / OS
 .DS_Store
