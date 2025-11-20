@@ -70,8 +70,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         # Mirrors the PlugHub IMS/Queue credential scheme; override via env vars if needed.
         'NAME': os.environ.get('PLUGHUB_DB_NAME', 'plughub_paymentchecker'),
-        'USER': os.environ.get('PLUGHUB_DB_USER', 'plughub_admin'),
-        'PASSWORD': os.environ.get('PLUGHUB_DB_PASSWORD', 'plughub_admin'),
+        'USER': os.environ.get('PLUGHUB_DB_USER', 'plughub'),
+        'PASSWORD': os.environ.get('PLUGHUB_DB_PASSWORD', 'Cablet0w'),
         'HOST': os.environ.get('PLUGHUB_DB_HOST', 'localhost'),
         'PORT': os.environ.get('PLUGHUB_DB_PORT', '5432'),
     }
@@ -83,6 +83,8 @@ PLUGHUB_ALLOWED_API_KEYS = [
         os.environ.get("PLUGHUB_API_KEY_PROD"),
     ] if key
 ]
+
+PAYMONGO_WEBHOOK_SECRET = os.environ.get("PAYMONGO_WEBHOOK_SECRET", "")
 
 # Encourage HTTPS in deploys; keep cookies secure.
 CSRF_COOKIE_SECURE = True

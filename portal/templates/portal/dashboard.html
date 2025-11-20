@@ -61,6 +61,7 @@
                             <th>Reference</th>
                             <th>Payment ID</th>
                             <th>Status</th>
+                            <th>Consumed</th>
                             <th>Used</th>
                         </tr>
                     </thead>
@@ -92,6 +93,13 @@
                                     <span class="status-pill {{ payment.status|slugify }}">
                                         {{ payment.status }}
                                     </span>
+                                </td>
+                                <td>
+                                    {% if payment.date_consumed %}
+                                        {{ payment.date_consumed|timezone:"Asia/Manila"|date:"M d, Y h:i A" }}
+                                    {% else %}
+                                        <span class="muted">—</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if payment.used %}

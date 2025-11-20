@@ -1,7 +1,8 @@
 import json
 import secrets
 import string
-
+import hmac
+import hashlib
 import logging
 from decimal import Decimal, InvalidOperation
 
@@ -224,6 +225,31 @@ def _check_api_key(request):
     return supplied in allowed
 
 
+def _paymongo_signature_valid(request):
+    secret = getattr(settings, "PAYMONGO_WEBHOOK_SECRET", "")
+    if not secret:
+        return False
+
+    signature_header = request.headers.get("Paymongo-Signature") or request.META.get("HTTP_PAYMONGO_SIGNATURE")
+    if not signature_header:
+        return False
+
+    try:
+        parts = dict(item.split("=", 1) for item in signature_header.split(","))
+        timestamp = parts.get("t")
+        provided_sig = parts.get("v1")
+    except ValueError:
+        return False
+
+    if not timestamp or not provided_sig:
+        return False
+
+    raw_body = request.body or b""
+    signed_string = f"{timestamp}.{raw_body.decode('utf-8', errors='replace')}"
+    expected = hmac.new(secret.encode("utf-8"), signed_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, provided_sig)
+
+
 def _lower_dict_keys(data):
     if not isinstance(data, dict):
         return {}
@@ -245,6 +271,63 @@ def _extract_payload(request):
         return _lower_dict_keys(data_obj), None
 
     return lowered, None
+
+
+def _parse_paymongo_event(data):
+    """
+    Accepts lowered dict representing PayMongo webhook event envelope.
+    Returns a flattened dict with name, email, amount, reference, paymentid, status, used=False
+    or None if structure is not PayMongo event-like.
+    """
+    # Expect data -> attributes -> data -> attributes...
+    attributes = data.get("attributes") if isinstance(data, dict) else None
+    if not isinstance(attributes, dict):
+        return None
+    inner_data = attributes.get("data")
+    if not isinstance(inner_data, dict):
+        return None
+    pay_attributes = inner_data.get("attributes") if isinstance(inner_data.get("attributes"), dict) else None
+    if pay_attributes is None:
+        return None
+
+    # Extract billing
+    billing = pay_attributes.get("billing") or {}
+    email = (billing.get("email") or "").strip().lower()
+    name = (billing.get("name") or "").strip()
+
+    # Amount is in cents
+    amount_val = pay_attributes.get("amount")
+    try:
+        amount_php = Decimal(str(amount_val)) / Decimal("100")
+        amount_php = amount_php.quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError):
+        amount_php = None
+
+    status = (pay_attributes.get("status") or "").strip()
+
+    # Reference
+    reference = (
+        pay_attributes.get("reference_number")
+        or (pay_attributes.get("source") or {}).get("reference_number")
+        or ((pay_attributes.get("source") or {}).get("attributes") or {}).get("reference_number")
+    )
+    if reference:
+        reference = str(reference).strip()
+
+    payment_id = (inner_data.get("id") or "").strip()
+
+    if not any([email, name, amount_php, reference, payment_id, status]):
+        return None
+
+    return {
+        "name": name,
+        "email": email,
+        "amount": amount_php,
+        "reference": reference or "",
+        "paymentid": payment_id,
+        "status": status,
+        "used": False,
+    }
 
 
 @csrf_exempt
@@ -295,7 +378,8 @@ def check_user_details(request):
 @csrf_exempt
 @require_POST
 def log_payments(request):
-    if not _check_api_key(request):
+    authorized = _check_api_key(request) or _paymongo_signature_valid(request)
+    if not authorized:
         logger.warning("Unauthorized API call to log_payments", extra={"ip": _client_ip(request)})
         return JsonResponse({"error": "Unauthorized"}, status=401)
 
@@ -306,6 +390,12 @@ def log_payments(request):
     data, error = _extract_payload(request)
     if error:
         return error
+
+    # Detect PayMongo event payload and map it
+    if data.get("type") == "event" or ("attributes" in data and isinstance(data.get("attributes"), dict)):
+        mapped = _parse_paymongo_event(data)
+        if mapped:
+            data = mapped
 
     required_fields = ["name", "email", "amount", "reference", "paymentid", "status"]
     missing = [field for field in required_fields if not str(data.get(field, "")).strip()]
