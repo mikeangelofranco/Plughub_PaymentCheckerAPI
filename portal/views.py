@@ -47,7 +47,7 @@ class PortalLoginView(LoginView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context.setdefault("page_title", "PlugHub Payment Checker")
+        context.setdefault("page_title", "Subscriber Directory")
         return context
 
 
@@ -224,6 +224,29 @@ def _check_api_key(request):
     return supplied in allowed
 
 
+def _lower_dict_keys(data):
+    if not isinstance(data, dict):
+        return {}
+    return {str(k).lower(): v for k, v in data.items()}
+
+
+def _extract_payload(request):
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    if not isinstance(payload, dict):
+        return None, JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+    lowered = _lower_dict_keys(payload)
+    data_obj = lowered.get("data")
+    if isinstance(data_obj, dict):
+        return _lower_dict_keys(data_obj), None
+
+    return lowered, None
+
+
 @csrf_exempt
 @require_POST
 def check_user_details(request):
@@ -235,17 +258,12 @@ def check_user_details(request):
         logger.warning("Rate limit exceeded for check_user_details", extra={"ip": _client_ip(request)})
         return JsonResponse({"error": "Rate limit exceeded"}, status=429)
 
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+    data, error = _extract_payload(request)
+    if error:
+        return error
 
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if data is None and isinstance(payload, dict):
-        data = payload
-
-    email = (data.get("email") or "").strip().lower() if isinstance(data, dict) else ""
-    product = (data.get("product") or "").strip().lower() if isinstance(data, dict) else ""
+    email = (data.get("email") or "").strip().lower()
+    product = (data.get("product") or "").strip().lower()
 
     if not email or not product:
         return JsonResponse({"error": "Both email and product are required."}, status=400)
@@ -285,35 +303,27 @@ def log_payments(request):
         logger.warning("Rate limit exceeded for log_payments", extra={"ip": _client_ip(request)})
         return JsonResponse({"error": "Rate limit exceeded"}, status=429)
 
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({"error": "Invalid JSON body"}, status=400)
+    data, error = _extract_payload(request)
+    if error:
+        return error
 
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if data is None and isinstance(payload, dict):
-        data = payload
-
-    required_fields = ["Name", "Email", "Amount", "Reference", "PaymentID", "Status"]
-    if not isinstance(data, dict):
-        return JsonResponse({"error": "Missing data object"}, status=400)
-
+    required_fields = ["name", "email", "amount", "reference", "paymentid", "status"]
     missing = [field for field in required_fields if not str(data.get(field, "")).strip()]
     if missing:
         return JsonResponse({"error": f"Missing fields: {', '.join(missing)}"}, status=400)
 
     try:
-        amount_val = Decimal(str(data.get("Amount"))).quantize(Decimal("0.01"))
+        amount_val = Decimal(str(data.get("amount"))).quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError):
         return JsonResponse({"error": "Amount must be a valid number"}, status=400)
 
     record = PaymentRecord.objects.create(
-        name=data.get("Name", "").strip(),
-        email=data.get("Email", "").strip().lower(),
+        name=data.get("name", "").strip(),
+        email=data.get("email", "").strip().lower(),
         amount=amount_val,
-        reference_number=data.get("Reference", "").strip(),
-        payment_id=data.get("PaymentID", "").strip(),
-        status=data.get("Status", "").strip(),
+        reference_number=data.get("reference", "").strip(),
+        payment_id=data.get("paymentid", "").strip(),
+        status=data.get("status", "").strip(),
         used=False,
     )
 
@@ -327,4 +337,69 @@ def log_payments(request):
             }
         },
         status=201,
+    )
+
+
+@csrf_exempt
+@require_POST
+def license_consume(request):
+    if not _check_api_key(request):
+        logger.warning("Unauthorized API call to license_consume", extra={"ip": _client_ip(request)})
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    if not _check_rate_limit(request):
+        logger.warning("Rate limit exceeded for license_consume", extra={"ip": _client_ip(request)})
+        return JsonResponse({"error": "Rate limit exceeded"}, status=429)
+
+    data, error = _extract_payload(request)
+    if error:
+        return error
+
+    product = (data.get("product") or "").strip().lower()
+    reference = (data.get("reference") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+
+    if not product or not reference or not email:
+        return JsonResponse({"error": "Product, reference, and email are required"}, status=400)
+
+    payment = PaymentRecord.objects.filter(reference_number__iexact=reference).first()
+    if not payment:
+        return JsonResponse({"error": "Reference not found"}, status=404)
+
+    if payment.used:
+        return JsonResponse({"error": "Resource not found"}, status=404)
+
+    payment.used = True
+    payment.date_consumed = timezone.now()
+    payment.save(update_fields=["used", "date_consumed", "updated_at"])
+
+    if product == "gmail-addon-cleaner":
+        subscription = CustomerSubscription.objects.filter(
+            Q(email__iexact=email) & Q(product__iexact=product)
+        ).first()
+        if subscription:
+            subscription.subscription_type = "One-time"
+            subscription.status = CustomerSubscription.Status.PAID
+            subscription.save(update_fields=["subscription_type", "status", "updated_at"])
+        else:
+            CustomerSubscription.objects.create(
+                external_id=_generate_external_id(product),
+                product=product,
+                email=email or payment.email.lower(),
+                username="",
+                last_login=timezone.now(),
+                subscription_type="One-time",
+                status=CustomerSubscription.Status.PAID,
+            )
+
+    return JsonResponse(
+        {
+            "data": {
+                "reference": payment.reference_number,
+                "used": payment.used,
+                "status": payment.status,
+                "date_consumed": payment.date_consumed.isoformat() if payment.date_consumed else None,
+                "email": email,
+            }
+        }
     )

@@ -6,10 +6,9 @@
 {% block content %}
 <div class="dashboard-shell">
     <header class="dashboard-header">
-        <div>
-            <p class="eyebrow">Subscriber directory</p>
-            <h1>Customers Across PlugHub Apps</h1>
-            <p class="subtext">Track Inventory, Queueing, Payment Checker, and upcoming PlugHub add-ons with inline edits.</p>
+        <div class="dashboard-title-stack">
+            <h1>Subscriber Directory</h1>
+            <p class="subtext">Manage customers and payments in one place with inline edits and quick inserts.</p>
         </div>
         <div class="header-actions">
             <div class="user-chip">
@@ -29,7 +28,7 @@
             <header class="table-header">
                 <div>
                     <h2>Payment records</h2>
-                    <p>Review PayMongo data, apply statuses, and mark payments as used.</p>
+                    <p class="subtext"></p>
                 </div>
                 <div class="pagination-info">
                     {{ payment_paginator.count }} records

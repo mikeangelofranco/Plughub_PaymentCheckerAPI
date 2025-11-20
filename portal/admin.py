@@ -35,6 +35,7 @@ class PaymentRecordAdmin(admin.ModelAdmin):
         "amount",
         "status",
         "used",
+        "date_consumed",
     )
     search_fields = (
         "reference_number",

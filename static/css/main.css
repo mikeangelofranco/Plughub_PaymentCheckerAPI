@@ -231,6 +231,20 @@ a {
     font-size: clamp(1.8rem, 3vw, 2.2rem);
 }
 
+.dashboard-title-stack h1 {
+    margin: 0;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: clamp(1.6rem, 2.8vw, 2.1rem);
+    background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.dashboard-title-stack .subtext {
+    margin: 0.2rem 0 0;
+}
+
 .subtext {
     color: var(--muted);
     margin: 0.4rem 0 0;
