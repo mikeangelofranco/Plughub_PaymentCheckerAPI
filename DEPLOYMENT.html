@@ -14,7 +14,7 @@
 </head>
 <body>
   <h1>Subscriber Directory Deployment (Ubuntu 22.04+)</h1>
-  <p>Domain: <code>https://www.subs.plughub-ims.com/</code>. App root: <code>/srv/subscriber_directory</code>. Database: Postgres (<code>plughub</code>/<code>Cablet0w</code> user) with a dedicated DB.</p>
+  <p>Domain: <code>https://subs.plughub-ims.com/</code>. App root: <code>/srv/subscriber_directory</code>. Database: Postgres (<code>plughub</code>/<code>Cablet0w</code> user) with a dedicated DB.</p>
 
   <h2>1) System prep</h2>
   <pre>sudo apt update && sudo apt upgrade -y
@@ -26,19 +26,23 @@ sudo -iu postgres psql -c "CREATE DATABASE plughub_paymentchecker OWNER plughub;
 sudo -iu postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE plughub_paymentchecker TO plughub;"</pre>
 
   <h2>3) Deploy code to /srv</h2>
-  <pre>sudo mkdir -p /srv/subscriber_directory
-sudo chown $USER:$USER /srv/subscriber_directory
-cd /srv/subscriber_directory
-# copy subscriber_directory_release.zip here (scp or upload)
+  <pre># copy from Windows to Ubuntu tmp (on Windows Powershell or CMD):
+# scp subscriber_directory_release.zip user@your-server:/tmp/
+
+# on Ubuntu
+cd /tmp
 unzip -o subscriber_directory_release.zip
+sudo mkdir -p /srv/subscriber_directory
+sudo rsync -a /tmp/portal /tmp/plughub_paymentchecker /tmp/templates /tmp/static /tmp/manage.py /tmp/requirements.txt /tmp/README.md /tmp/RELEASE_NOTES.md /tmp/DEPLOYMENT.html /tmp/.env.example /srv/subscriber_directory/
+cd /srv/subscriber_directory
 python3 -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt</pre>
 
   <h2>4) Environment config</h2>
-  <pre>cp .env.example .env
-nano .env  # set ALLOWED_HOSTS=www.subs.plughub-ims.com, actual DB password, API keys, PAYMONGO_WEBHOOK_SECRET</pre>
+<pre>cp .env.example .env
+nano .env  # set ALLOWED_HOSTS=subs.plughub-ims.com, actual DB password, API keys, PAYMONGO_WEBHOOK_SECRET</pre>
 
   <h2>5) Django setup</h2>
   <pre>. .venv/bin/activate
@@ -75,7 +79,7 @@ sudo systemctl status subscriber-directory --no-pager</pre>
   <pre>sudo tee /etc/nginx/sites-available/subscriber-directory &lt;&lt;'EOF'
 server {
     listen 80;
-    server_name www.subs.plughub-ims.com;
+    server_name subs.plughub-ims.com;
 
     location /static/ {
         alias /srv/subscriber_directory/static/;
@@ -92,7 +96,7 @@ sudo nginx -t
 sudo systemctl restart nginx</pre>
 
   <h2>8) TLS (Let's Encrypt)</h2>
-  <pre>sudo certbot --nginx -d www.subs.plughub-ims.com --non-interactive --agree-tos -m admin@subs.plughub-ims.com
+  <pre>sudo certbot --nginx -d subs.plughub-ims.com --non-interactive --agree-tos -m admin@subs.plughub-ims.com
 sudo systemctl reload nginx</pre>
 
   <h2>9) Smoke test</h2>
