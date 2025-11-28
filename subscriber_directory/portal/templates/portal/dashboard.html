@@ -1,0 +1,586 @@
+﻿{% extends "base.html" %}
+{% load tz %}
+
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <header class="dashboard-header">
+        <div class="dashboard-title-stack">
+            <h1>Subscriber Directory</h1>
+            <p class="subtext">Manage customers and payments in one place with inline edits and quick inserts.</p>
+        </div>
+        <div class="header-actions">
+            <div class="user-chip">
+                {{ request.user.get_full_name|default:request.user.username|default:"Operator" }}
+            </div>
+            <a href="{% url 'logout' %}" class="ghost-link">Log out</a>
+        </div>
+    </header>
+
+    <div class="tab-switcher">
+        <a href="?tab=customers" class="tab-link {% if current_tab == 'customers' %}active{% endif %}">Active Users</a>
+        <a href="?tab=payments" class="tab-link {% if current_tab == 'payments' %}active{% endif %}">Payments</a>
+    </div>
+
+    {% if current_tab == 'payments' %}
+        <section class="table-panel">
+            <header class="table-header">
+                <div>
+                    <h2>Payment records</h2>
+                    <p class="subtext"></p>
+                </div>
+                <div class="pagination-info">
+                    {{ payment_paginator.count }} records
+                </div>
+            </header>
+
+            <div class="table-wrapper">
+                <form class="filter-bar" method="get">
+                    <input type="hidden" name="tab" value="payments">
+                    <label>
+                        <span class="sr-only">Search payments</span>
+                        <input type="search"
+                               name="pay_q"
+                               placeholder="Search name, email, reference, payment id, status"
+                               value="{{ payment_query|default:'' }}">
+                    </label>
+                    <button type="submit" class="primary-btn compact">Search</button>
+                    {% if payment_query %}
+                        <a href="?tab=payments" class="ghost-link clear-link">Clear</a>
+                    {% endif %}
+                </form>
+
+                <table class="subscriptions-table">
+                    <thead>
+                        <tr>
+                            <th class="action-col">Edit</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Amount</th>
+                            <th>Reference</th>
+                            <th>Payment ID</th>
+                            <th>Status</th>
+                            <th>Consumed</th>
+                            <th>Used</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                            <tr>
+                                <td class="action-col">
+                                    <button type="button"
+                                            class="icon-btn"
+                                            aria-label="Edit {{ payment.reference_number }}"
+                                            data-payment-id="{{ payment.id }}"
+                                            data-name="{{ payment.name }}"
+                                            data-email="{{ payment.email }}"
+                                            data-amount="{{ payment.amount }}"
+                                            data-reference-number="{{ payment.reference_number }}"
+                                            data-payment-id-field="{{ payment.payment_id }}"
+                                            data-status="{{ payment.status }}"
+                                            data-used="{{ payment.used|yesno:'true,false' }}"
+                                            onclick="openPaymentEdit(this)">
+                                        Edit
+                                    </button>
+                                </td>
+                                <td>{{ payment.name }}</td>
+                                <td>{{ payment.email }}</td>
+                                <td>{{ payment.amount }}</td>
+                                <td>{{ payment.reference_number }}</td>
+                                <td>{{ payment.payment_id }}</td>
+                                <td>
+                                    <span class="status-pill {{ payment.status|slugify }}">
+                                        {{ payment.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if payment.date_consumed %}
+                                        {{ payment.date_consumed|timezone:"Asia/Manila"|date:"M d, Y h:i A" }}
+                                    {% else %}
+                                        <span class="muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if payment.used %}
+                                        <span class="status-pill used-pill">Used</span>
+                                    {% else %}
+                                        <span class="status-pill free">Available</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="8" class="empty-cell">No payment records yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <div class="footer-copy">
+                    <p class="muted small">Insert payments to reserve reference numbers and prevent reuse.</p>
+                </div>
+                <div class="footer-actions">
+                    <button type="button" class="primary-btn" onclick="openPaymentCreate()">Insert payment</button>
+                </div>
+            </div>
+
+            {% if payment_paginator.num_pages > 1 %}
+                <div class="pagination-bar">
+                    {% if payment_page_obj.has_previous %}
+                        <a class="page-btn" href="?tab=payments&{% if pay_querystring %}{{ pay_querystring }}&{% endif %}pay_page={{ payment_page_obj.previous_page_number }}">&lsaquo;</a>
+                    {% else %}
+                        <button class="page-btn" disabled>&lsaquo;</button>
+                    {% endif %}
+
+                    {% for num in payment_paginator.page_range %}
+                        {% if num == payment_page_obj.number %}
+                            <span class="page-btn active">{{ num }}</span>
+                        {% elif num >= payment_page_obj.number|add:"-2" and num <= payment_page_obj.number|add:"2" %}
+                            <a class="page-btn" href="?tab=payments&{% if pay_querystring %}{{ pay_querystring }}&{% endif %}pay_page={{ num }}">{{ num }}</a>
+                        {% elif num == 1 %}
+                            <a class="page-btn" href="?tab=payments&{% if pay_querystring %}{{ pay_querystring }}&{% endif %}pay_page=1">1</a>
+                            {% if payment_page_obj.number > 4 %}
+                                <span class="ellipsis">&hellip;</span>
+                            {% endif %}
+                        {% elif num == payment_paginator.num_pages %}
+                            {% if payment_page_obj.number < payment_paginator.num_pages|add:"-3" %}
+                                <span class="ellipsis">&hellip;</span>
+                            {% endif %}
+                            <a class="page-btn" href="?tab=payments&{% if pay_querystring %}{{ pay_querystring }}&{% endif %}pay_page={{ payment_paginator.num_pages }}">{{ payment_paginator.num_pages }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if payment_page_obj.has_next %}
+                        <a class="page-btn" href="?tab=payments&{% if pay_querystring %}{{ pay_querystring }}&{% endif %}pay_page={{ payment_page_obj.next_page_number }}">&rsaquo;</a>
+                    {% else %}
+                        <button class="page-btn" disabled>&rsaquo;</button>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+    {% else %}
+        <section class="table-panel">
+            <header class="table-header">
+                <div>
+                    <h2>Active users</h2>
+                    <p>Search, edit, and insert customers without leaving this screen.</p>
+                </div>
+                <div class="pagination-info">
+                    {{ paginator.count }} records
+                </div>
+            </header>
+
+            <div class="table-wrapper">
+                <form class="filter-bar" method="get">
+                    <label>
+                        <span class="sr-only">Search subscriptions</span>
+                        <input type="search"
+                               name="q"
+                               placeholder="Search ID, product, email, username, or subscription type"
+                               value="{{ query|default:'' }}">
+                    </label>
+                    <button type="submit" class="primary-btn compact">Search</button>
+                    {% if query %}
+                        <a href="{% url 'portal:dashboard' %}" class="ghost-link clear-link">Clear</a>
+                    {% endif %}
+                </form>
+
+                <table class="subscriptions-table">
+                    <thead>
+                        <tr>
+                            <th class="action-col">Edit</th>
+                            <th>ID</th>
+                            <th>Product</th>
+                            <th>Email</th>
+                            <th>Username</th>
+                            <th>Last Login (PH)</th>
+                            <th>Subscription Type</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in subscriptions %}
+                            <tr>
+                                <td class="action-col">
+                                    <button type="button"
+                                            class="icon-btn"
+                                            aria-label="Edit {{ record.external_id }}"
+                                            data-customer-id="{{ record.id }}"
+                                            data-external-id="{{ record.external_id }}"
+                                            data-product="{{ record.product }}"
+                                            data-email="{{ record.email }}"
+                                            data-username="{{ record.username }}"
+                                            data-subscription-type="{{ record.subscription_type }}"
+                                            data-status="{{ record.status }}"
+                                            data-last-login="{% if record.last_login %}{{ record.last_login|timezone:'Asia/Manila'|date:'Y-m-d\\TH:i' }}{% endif %}"
+                                            onclick="openEditModal(this)">
+                                        Edit
+                                    </button>
+                                </td>
+                                <td>{{ record.external_id }}</td>
+                                <td>{{ record.product }}</td>
+                                <td>{{ record.email }}</td>
+                                <td>{{ record.username }}</td>
+                                <td>
+                                    {% if record.last_login %}
+                                        {{ record.last_login|timezone:"Asia/Manila"|date:"M d, Y" }} &middot;
+                                        {{ record.last_login|timezone:"Asia/Manila"|date:"h:i A" }}
+                                    {% else %}
+                                        <span class="muted">No record</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ record.subscription_type }}</td>
+                                <td>
+                                    <span class="status-pill {{ record.status|slugify }}">
+                                        {{ record.status }}
+                                    </span>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="8" class="empty-cell">No subscriptions yet. Connect your data source.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <div class="footer-copy">
+                    <p class="muted small">Use the insert button to onboard customers that are missing from sync.</p>
+                </div>
+                <div class="footer-actions">
+                    <button type="button" class="primary-btn" onclick="openCreateModal()">Insert customer</button>
+                </div>
+            </div>
+
+            {% if paginator.num_pages > 1 %}
+                <div class="pagination-bar">
+                    {% if page_obj.has_previous %}
+                        <a class="page-btn" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.previous_page_number }}">&lsaquo;</a>
+                    {% else %}
+                        <button class="page-btn" disabled>&lsaquo;</button>
+                    {% endif %}
+
+                    {% for num in paginator.page_range %}
+                        {% if num == page_obj.number %}
+                            <span class="page-btn active">{{ num }}</span>
+                        {% elif num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+                            <a class="page-btn" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ num }}">{{ num }}</a>
+                        {% elif num == 1 %}
+                            <a class="page-btn" href="?{% if querystring %}{{ querystring }}&{% endif %}page=1">1</a>
+                            {% if page_obj.number > 4 %}
+                                <span class="ellipsis">&hellip;</span>
+                            {% endif %}
+                        {% elif num == paginator.num_pages %}
+                            {% if page_obj.number < paginator.num_pages|add:"-3" %}
+                                <span class="ellipsis">&hellip;</span>
+                            {% endif %}
+                            <a class="page-btn" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ paginator.num_pages }}">{{ paginator.num_pages }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <a class="page-btn" href="?{% if querystring %}{{ querystring }}&{% endif %}page={{ page_obj.next_page_number }}">&rsaquo;</a>
+                    {% else %}
+                        <button class="page-btn" disabled>&rsaquo;</button>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+    {% endif %}
+</div>
+
+<div id="customer-modal"
+     class="modal-shell {% if open_modal %}open{% endif %}"
+     data-open="{{ open_modal|yesno:'true,false' }}"
+     data-form-mode="{{ form_mode }}"
+     data-active-id="{{ active_customer_id|default_if_none:'' }}">
+    <div class="modal-backdrop" onclick="closeCustomerModal()"></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <div>
+                <p class="eyebrow">Update directory</p>
+                <h3 id="customer-form-title">
+                    {% if form_mode == "edit" %}
+                        Edit customer
+                    {% else %}
+                        Insert customer
+                    {% endif %}
+                </h3>
+                <p class="subtext">Use the same credentials you provisioned for PlugHub IMS and Queue when saving.</p>
+            </div>
+            <button class="icon-btn close" type="button" aria-label="Close modal" onclick="closeCustomerModal()">&times;</button>
+        </header>
+
+        {% if form.non_field_errors %}
+            <div class="form-errors compact" role="alert">
+                {% for error in form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" id="customer-form" class="modal-form" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="customer">
+            <input type="hidden" name="customer_id" id="id_customer_id" value="{{ active_customer_id|default_if_none:'' }}">
+            <div class="form-grid">
+                <label class="field">
+                    <span>Customer ID</span>
+                    {{ form.external_id }}
+                    {% if form.external_id.errors %}
+                        <span class="field-error-inline">{{ form.external_id.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Product</span>
+                    {{ form.product }}
+                    {% if form.product.errors %}
+                        <span class="field-error-inline">{{ form.product.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Email</span>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                        <span class="field-error-inline">{{ form.email.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Username</span>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                        <span class="field-error-inline">{{ form.username.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Last login (PH time)</span>
+                    {{ form.last_login }}
+                    {% if form.last_login.errors %}
+                        <span class="field-error-inline">{{ form.last_login.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Subscription type</span>
+                    {{ form.subscription_type }}
+                    {% if form.subscription_type.errors %}
+                        <span class="field-error-inline">{{ form.subscription_type.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Status</span>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                        <span class="field-error-inline">{{ form.status.errors.0 }}</span>
+                    {% endif %}
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="ghost-link" onclick="closeCustomerModal()">Cancel</button>
+                <button type="submit" class="primary-btn" id="customer-submit-label">
+                    {% if form_mode == "edit" %}
+                        Save changes
+                    {% else %}
+                        Insert customer
+                    {% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="payment-modal"
+     class="modal-shell {% if open_payment_modal %}open{% endif %}"
+     data-open="{{ open_payment_modal|yesno:'true,false' }}"
+     data-form-mode="{{ payment_form_mode }}"
+     data-active-id="{{ active_payment_id|default_if_none:'' }}">
+    <div class="modal-backdrop" onclick="closePaymentModal()"></div>
+    <div class="modal-card">
+        <header class="modal-header">
+            <div>
+                <p class="eyebrow">PayMongo details</p>
+                <h3 id="payment-form-title">
+                    {% if payment_form_mode == "edit" %}
+                        Edit payment
+                    {% else %}
+                        Insert payment
+                    {% endif %}
+                </h3>
+                <p class="subtext">Flag payments as used to prevent reference reuse.</p>
+            </div>
+            <button class="icon-btn close" type="button" aria-label="Close modal" onclick="closePaymentModal()">&times;</button>
+        </header>
+
+        {% if payment_form.non_field_errors %}
+            <div class="form-errors compact" role="alert">
+                {% for error in payment_form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" id="payment-form" class="modal-form" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="payment">
+            <input type="hidden" name="payment_pk" id="id_payment_pk" value="{{ active_payment_id|default_if_none:'' }}">
+            <div class="form-grid">
+                <label class="field">
+                    <span>Name</span>
+                    {{ payment_form.name }}
+                    {% if payment_form.name.errors %}
+                        <span class="field-error-inline">{{ payment_form.name.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Email</span>
+                    {{ payment_form.email }}
+                    {% if payment_form.email.errors %}
+                        <span class="field-error-inline">{{ payment_form.email.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Amount</span>
+                    {{ payment_form.amount }}
+                    {% if payment_form.amount.errors %}
+                        <span class="field-error-inline">{{ payment_form.amount.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Reference Number</span>
+                    {{ payment_form.reference_number }}
+                    {% if payment_form.reference_number.errors %}
+                        <span class="field-error-inline">{{ payment_form.reference_number.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Payment ID</span>
+                    {{ payment_form.payment_id }}
+                    {% if payment_form.payment_id.errors %}
+                        <span class="field-error-inline">{{ payment_form.payment_id.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field">
+                    <span>Status</span>
+                    {{ payment_form.status }}
+                    {% if payment_form.status.errors %}
+                        <span class="field-error-inline">{{ payment_form.status.errors.0 }}</span>
+                    {% endif %}
+                </label>
+                <label class="field checkbox-field">
+                    <span>Used</span>
+                    {{ payment_form.used }}
+                    {% if payment_form.used.errors %}
+                        <span class="field-error-inline">{{ payment_form.used.errors.0 }}</span>
+                    {% endif %}
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="ghost-link" onclick="closePaymentModal()">Cancel</button>
+                <button type="submit" class="primary-btn" id="payment-submit-label">
+                    {% if payment_form_mode == "edit" %}
+                        Save changes
+                    {% else %}
+                        Insert payment
+                    {% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const modalShell = document.getElementById('customer-modal');
+    const formEl = document.getElementById('customer-form');
+    const formTitle = document.getElementById('customer-form-title');
+    const submitLabel = document.getElementById('customer-submit-label');
+    const hiddenId = document.getElementById('id_customer_id');
+
+    function closeCustomerModal() {
+        modalShell.classList.remove('open');
+    }
+
+    function openCreateModal() {
+        formEl.reset();
+        hiddenId.value = '';
+        formTitle.textContent = 'Insert customer';
+        submitLabel.textContent = 'Insert customer';
+        modalShell.classList.add('open');
+    }
+
+    function openEditModal(button) {
+        formEl.reset();
+        hiddenId.value = button.dataset.customerId || '';
+        document.getElementById('id_external_id').value = button.dataset.externalId || '';
+        document.getElementById('id_product').value = button.dataset.product || '';
+        document.getElementById('id_email').value = button.dataset.email || '';
+        document.getElementById('id_username').value = button.dataset.username || '';
+        document.getElementById('id_subscription_type').value = button.dataset.subscriptionType || '';
+        document.getElementById('id_status').value = button.dataset.status || '';
+        if (button.dataset.lastLogin) {
+            document.getElementById('id_last_login').value = button.dataset.lastLogin;
+        } else {
+            document.getElementById('id_last_login').value = '';
+        }
+        formTitle.textContent = `Edit ${button.dataset.externalId || 'customer'}`;
+        submitLabel.textContent = 'Save changes';
+        modalShell.classList.add('open');
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeCustomerModal();
+            closePaymentModal();
+        }
+    });
+
+    const shouldOpen = modalShell.dataset.open === 'true';
+    if (shouldOpen) {
+        modalShell.classList.add('open');
+    }
+
+    // Payments modal
+    const paymentModal = document.getElementById('payment-modal');
+    const paymentForm = document.getElementById('payment-form');
+    const paymentTitle = document.getElementById('payment-form-title');
+    const paymentSubmitLabel = document.getElementById('payment-submit-label');
+    const hiddenPaymentId = document.getElementById('id_payment_pk');
+
+    function closePaymentModal() {
+        paymentModal.classList.remove('open');
+    }
+
+    function openPaymentCreate() {
+        paymentForm.reset();
+        hiddenPaymentId.value = '';
+        paymentTitle.textContent = 'Insert payment';
+        paymentSubmitLabel.textContent = 'Insert payment';
+        paymentModal.classList.add('open');
+    }
+
+    function openPaymentEdit(button) {
+        paymentForm.reset();
+        hiddenPaymentId.value = button.dataset.paymentId || '';
+        document.getElementById('id_name').value = button.dataset.name || '';
+        document.getElementById('id_email').value = button.dataset.email || '';
+        document.getElementById('id_amount').value = button.dataset.amount || '';
+        document.getElementById('id_reference_number').value = button.dataset.referenceNumber || '';
+        document.getElementById('id_payment_id').value = button.dataset.paymentIdField || '';
+        document.getElementById('id_status').value = button.dataset.status || '';
+        document.getElementById('id_used').checked = button.dataset.used === 'true';
+        paymentTitle.textContent = `Edit ${button.dataset.referenceNumber || 'payment'}`;
+        paymentSubmitLabel.textContent = 'Save changes';
+        paymentModal.classList.add('open');
+    }
+
+    const paymentShouldOpen = paymentModal.dataset.open === 'true';
+    if (paymentShouldOpen) {
+        paymentModal.classList.add('open');
+    }
+</script>
+{% endblock %}
