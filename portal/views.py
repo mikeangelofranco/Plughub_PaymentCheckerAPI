@@ -397,6 +397,10 @@ def log_payments(request):
         if mapped:
             data = mapped
 
+    # Fallback: if reference is missing but paymentid exists, reuse paymentid as reference
+    if not (data.get("reference") or "").strip():
+        data["reference"] = data.get("paymentid", "")
+
     required_fields = ["name", "email", "amount", "reference", "paymentid", "status"]
     missing = [field for field in required_fields if not str(data.get(field, "")).strip()]
     if missing:
